@@ -23,11 +23,8 @@ jobs:
     - name: Install FFmpeg
       run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-    - name: Debug - List files in workspace
-  run: ls -la
-
-- name: Install Python dependencies
-  run: pip install -r requirements.txt
+    - name: Install Python dependencies
+      run: pip install -r requirements.txt
 
     - name: Run the script
       env:
@@ -40,5 +37,6 @@ jobs:
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions-bot@github.com"
         git add videos.json
+        # Проверяем, есть ли изменения, и только тогда делаем коммит
         git diff --staged --quiet || git commit -m "Update videos.json"
         git push
