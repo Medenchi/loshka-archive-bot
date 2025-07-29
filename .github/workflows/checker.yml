@@ -23,8 +23,11 @@ jobs:
     - name: Install FFmpeg
       run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-    - name: Install Python dependencies
-      run: pip install -r requirements.txt
+    - name: Debug - List files in workspace
+  run: ls -la
+
+- name: Install Python dependencies
+  run: pip install -r requirements.txt
 
     - name: Run the script
       env:
