@@ -20,7 +20,7 @@ YOUTUBE_CHANNEL_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCAvr
 TEMP_FOLDER = 'temp_videos'
 DB_FILE = 'videos.json'
 MAX_VIDEOS_ENTRIES = 25
-CHUNK_DURATION_SECONDS = 600
+CHUNK_DURATION_SECONDS = 290
 COOKIE_FILE = 'cookies.txt'
 OCR_DURATION_SECONDS = 45 # Сколько секунд видео анализировать на спойлеры
 
