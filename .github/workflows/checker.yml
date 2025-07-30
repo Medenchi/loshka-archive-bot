@@ -30,13 +30,18 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }} # <-- Важное добавление
       run: python run.py
     
     - name: Commit and push if changed
       run: |
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions-bot@github.com"
-        git add videos.json
-        # Проверяем, есть ли изменения, и только тогда делаем коммит
-        git diff --staged --quiet || git commit -m "Update videos.json"
-        git push
+        # Проверяем, существует ли файл, прежде чем его добавлять
+        if [ -f "videos.json" ]; then
+          git add videos.json
+          git diff --staged --quiet || git commit -m "Update videos.json"
+          git push
+        else
+          echo "videos.json not found, nothing to commit."
+        fi
