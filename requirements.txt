@@ -2,3 +2,6 @@ feedparser
 python-telegram-bot
 requests
 yt-dlp
+pytesseract
+Pillow
+google-generativeai
