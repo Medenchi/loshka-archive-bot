@@ -1,4 +1,3 @@
-# Этот файл должен называться run.py
 import os
 import json
 import subprocess
@@ -8,15 +7,17 @@ import asyncio
 import time
 
 # --- НАСТРОЙКИ ---
-YOUTUBE_CHANNEL_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCAvrIl6ltV8MdJo3mV4Nl4Q" # Канал Куплинова
+YOUTUBE_CHANNEL_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCAvrIl6ltV8MdJo3mV4Nl4Q"
 TEMP_FOLDER = 'temp_videos'
-DB_FILE = 'videos.json' # Имя файла, который будет обновляться в репозитории
-MAX_VIDEOS_ENTRIES = 25 # Сколько видео хранить в базе
-CHUNK_DURATION_SECONDS = 600 # Режем на куски по 10 минут
+DB_FILE = 'videos.json'
+MAX_VIDEOS_ENTRIES = 25 
+CHUNK_DURATION_SECONDS = 600
+COOKIE_FILE = 'cookies.txt' # Имя для временного файла с куки
 
-# --- Настройки Telegram (берутся из Secrets GitHub) ---
+# --- Настройки из Secrets ---
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
+YOUTUBE_COOKIES_DATA = os.environ.get('YOUTUBE_COOKIES')
 
 bot = Bot(token=BOT_TOKEN)
 
@@ -45,9 +46,20 @@ async def process_video_async(video_id, title):
     video_parts_info = []
 
     try:
-        print("Скачиваю полное видео в 480p...")
+        print("Скачиваю полное видео в 480p (с аутентификацией)...")
         temp_filepath_template = os.path.join(TEMP_FOLDER, f'{video_id}_full.%(ext)s')
-        subprocess.run(['yt-dlp', '-f', 'best[height<=480]', '--output', temp_filepath_template, video_url], check=True, timeout=900)
+        
+        # --- Используем cookies при скачивании ---
+        command_dl = [
+            'yt-dlp',
+            '--cookies', COOKIE_FILE, # <-- Указываем использовать файл с куки
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+            '--no-check-certificate',
+            '-f', 'best[height<=480]', 
+            '--output', temp_filepath_template, 
+            video_url
+        ]
+        subprocess.run(command_dl, check=True, timeout=900)
         
         full_filename = next((f for f in os.listdir(TEMP_FOLDER) if f.startswith(f"{video_id}_full")), None)
         if not full_filename: 
@@ -83,33 +95,45 @@ async def process_video_async(video_id, title):
 def main():
     if not os.path.exists(TEMP_FOLDER): os.makedirs(TEMP_FOLDER)
     
-    print("--- Запуск проверки новых видео (GitHub Actions) ---")
-    feed = feedparser.parse(YOUTUBE_CHANNEL_URL)
-    if not feed.entries: return
-
-    db = get_video_db()
-    existing_ids = {video['id'] for video in db}
+    if YOUTUBE_COOKIES_DATA:
+        with open(COOKIE_FILE, 'w') as f:
+            f.write(YOUTUBE_COOKIES_DATA)
+        print("Временный файл cookies.txt создан.")
+    else:
+        print("ВНИМАНИЕ: Секрет YOUTUBE_COOKIES не найден.")
     
-    new_videos_to_process = [{'id': e.yt_videoid, 'title': e.title} for e in feed.entries if e.yt_videoid not in existing_ids]
+    try:
+        print("--- Запуск проверки новых видео (GitHub Actions с Cookies) ---")
+        feed = feedparser.parse(YOUTUBE_CHANNEL_URL)
+        if not feed.entries: return
 
-    if not new_videos_to_process:
-        print("Новых видео не найдено.")
-        return
+        db = get_video_db()
+        existing_ids = {video['id'] for video in db}
+        
+        new_videos_to_process = [{'id': e.yt_videoid, 'title': e.title} for e in feed.entries if e.yt_videoid not in existing_ids]
 
-    print(f"Найдено {len(new_videos_to_process)} новых видео.")
-    processed_videos = []
-    for video_info in reversed(new_videos_to_process):
-        result = asyncio.run(process_video_async(video_info['id'], video_info['title']))
-        if result:
-            processed_videos.append(result)
-        time.sleep(5)
-    
-    if processed_videos:
-        final_db = processed_videos + db
-        while len(final_db) > MAX_VIDEOS_ENTRIES:
-            final_db.pop()
-        save_video_db(final_db)
-        print("База данных videos.json успешно обновлена.")
+        if not new_videos_to_process:
+            print("Новых видео не найдено.")
+            return
+
+        print(f"Найдено {len(new_videos_to_process)} новых видео.")
+        processed_videos = []
+        for video_info in reversed(new_videos_to_process):
+            result = asyncio.run(process_video_async(video_info['id'], video_info['title']))
+            if result:
+                processed_videos.append(result)
+            time.sleep(5)
+        
+        if processed_videos:
+            final_db = processed_videos + db
+            while len(final_db) > MAX_VIDEOS_ENTRIES:
+                final_db.pop()
+            save_video_db(final_db)
+            print("База данных videos.json успешно обновлена.")
+    finally:
+        if os.path.exists(COOKIE_FILE):
+            os.remove(COOKIE_FILE)
+            print("Временный файл cookies.txt удален.")
 
 if __name__ == '__main__':
     main()
