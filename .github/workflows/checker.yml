@@ -1,18 +1,16 @@
-name: Check YouTube and Update Videos
+name: Process YouTube Videos on Demand
 
 on:
-  schedule:
-    # Запускать каждые 6 часов
-    - cron: '0 */6 * * *'
+  repository_dispatch:
+    types: [start-processing] # Сигнал от нашего Replit-бота
   workflow_dispatch:
     # Кнопка для ручного запуска
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Даем боту права на запись в репозиторий
     permissions:
-      contents: write
+      contents: write # Даем права на запись
       
     steps:
     - name: Checkout repository
@@ -23,11 +21,8 @@ jobs:
       with:
         python-version: '3.10'
 
-    # Устанавливаем и FFmpeg, и Tesseract OCR (для будущих фич)
-    - name: Install System Dependencies (FFmpeg & Tesseract)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg tesseract-ocr tesseract-ocr-rus
+    - name: Install FFmpeg
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
     - name: Install Python dependencies
       run: pip install -r requirements.txt
@@ -37,16 +32,13 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-        # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Закомментировано, пока не используем
       run: python run.py
     
     - name: Commit and push if changed
       run: |
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions-bot@github.com"
-        # --- ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ: Сначала синхронизируемся ---
-        git pull
-        # -----------------------------------------------------------
+        git pull # Синхронизируемся перед сохранением
         if [ -f "videos.json" ]; then
           git add videos.json
           git diff --staged --quiet || git commit -m "Update videos.json"
