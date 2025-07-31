@@ -1,3 +1,4 @@
+# Финальная версия с "чистой" нарезкой и обработкой не более 3 видео за раз
 import os
 import json
 import subprocess
@@ -11,9 +12,10 @@ YOUTUBE_CHANNEL_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCAvr
 TEMP_FOLDER = 'temp_videos'
 DB_FILE = 'videos.json'
 MAX_VIDEOS_ENTRIES = 25 
-CHUNK_DURATION_SECONDS = 240 # 4 минуты
+CHUNK_DURATION_SECONDS = 240 # Режем на 4-минутные куски
 COOKIE_FILE = 'cookies.txt'
 
+# --- Настройки из Secrets ---
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 YOUTUBE_COOKIES_DATA = os.environ.get('YOUTUBE_COOKIES')
@@ -26,25 +28,6 @@ def get_video_db():
 
 def save_video_db(db):
     with open(DB_FILE, 'w') as f: json.dump(db, f, indent=4)
-
-# --- НОВАЯ ФУНКЦИЯ: "Инспектор Качества" ---
-def is_chunk_valid(filepath):
-    """Проверяет, является ли видео-кусок корректным (имеет длительность > 0)."""
-    try:
-        command = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', filepath
-        ]
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=60)
-        duration = float(result.stdout.strip())
-        if duration > 0:
-            return True
-        else:
-            print(f"  ⚠️ Инспектор: Обнаружен кусок с нулевой длительностью: {os.path.basename(filepath)}")
-            return False
-    except Exception as e:
-        print(f"  ⚠️ Инспектор: Ошибка при проверке куска {os.path.basename(filepath)}: {e}")
-        return False
 
 async def upload_to_telegram(filepath, title):
     print(f"  > Загружаю {os.path.basename(filepath)} в Telegram...")
@@ -75,7 +58,7 @@ async def process_video_async(video_id, title):
         
         command_dl = [
             'yt-dlp', '--cookies', COOKIE_FILE,
-            '--user-agent', 'Mozilla/5.0 ...',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
             '--no-check-certificate', '-f', 'best[height<=480]', 
             '--output', temp_filepath_template, video_url
         ]
@@ -92,32 +75,25 @@ async def process_video_async(video_id, title):
         os.remove(full_filepath)
 
         chunks = sorted([f for f in os.listdir(TEMP_FOLDER) if f.startswith(f"{video_id}_part_")])
-        print(f"  ✅ Нарезано {len(chunks)} частей. [3/3] Проверяю и загружаю в Telegram...")
+        print(f"  ✅ Нарезано {len(chunks)} частей. [3/3] Загружаю в Telegram...")
 
         for i, chunk_filename in enumerate(chunks):
             chunk_filepath = os.path.join(TEMP_FOLDER, chunk_filename)
-            
-            # --- ИЗМЕНЕНИЕ: ПРОВЕРЯЕМ КАЖДЫЙ КУСОК ПЕРЕД ЗАГРУЗКОЙ ---
-            if is_chunk_valid(chunk_filepath):
-                part_title = f"{title} - Часть {i+1}"
-                file_id = await upload_to_telegram(chunk_filepath, part_title)
-                if file_id:
-                    video_parts_info.append({'part_num': i + 1, 'file_id': file_id})
-            
-            os.remove(chunk_filepath) # Удаляем в любом случае
+            part_title = f"{title} - Часть {i+1}"
+            file_id = await upload_to_telegram(chunk_filepath, part_title)
+            if file_id:
+                video_parts_info.append({'part_num': i + 1, 'file_id': file_id})
+            os.remove(chunk_filepath)
         
         if video_parts_info:
             print(f"🎉 Видео '{title}' полностью обработано!")
             return {'id': video_id, 'title': title, 'parts': video_parts_info}
-        else:
-            print(f"⚠️ Для видео '{title}' не было создано ни одного корректного куска.")
-            return None
+        return None
 
     except Exception as e:
         print(f"❌ КРИТИЧЕСКАЯ ОШИБКА для '{title}': {e}")
         return None
 
-# --- main() и if __name__ == '__main__' остаются такими же ---
 def main():
     if not os.path.exists(TEMP_FOLDER): os.makedirs(TEMP_FOLDER)
     if YOUTUBE_COOKIES_DATA:
@@ -126,7 +102,7 @@ def main():
     else:
         print("⚠️ ВНИМАНИЕ: Секрет YOUTUBE_COOKIES не найден.")
     try:
-        print("\n" + "="*50); print("🚀 Запуск проверки новых видео (v5 - с Инспектором Качества)"); print("="*50 + "\n")
+        print("\n" + "="*50); print("🚀 Запуск проверки новых видео (v5 - Стабильная)"); print("="*50 + "\n")
         feed = feedparser.parse(YOUTUBE_CHANNEL_URL)
         if not feed.entries: return
         db = get_video_db()
@@ -134,9 +110,9 @@ def main():
         new_videos_to_process = [{'id': e.yt_videoid, 'title': e.title} for e in feed.entries if e.yt_videoid not in existing_ids]
         if not new_videos_to_process:
             print("✅ Новых видео не найдено."); return
-        print(f"🔥 Найдено {len(new_videos_to_process)} новых видео для обработки.")
+        print(f"🔥 Найдено {len(new_videos_to_process)} новых видео. Обрабатываю не более 3-х за раз...")
         processed_videos = []
-        for video_info in reversed(new_videos_to_process):
+        for video_info in reversed(new_videos_to_process[-3:]):
             result = asyncio.run(process_video_async(video_info['id'], video_info['title']))
             if result: processed_videos.append(result)
             time.sleep(5)
