@@ -2,12 +2,15 @@ name: Check YouTube and Update Videos
 
 on:
   schedule:
+    # Запускать каждые 6 часов
     - cron: '0 */6 * * *'
   workflow_dispatch:
+    # Кнопка для ручного запуска
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Даем боту права на запись в репозиторий
     permissions:
       contents: write
       
@@ -20,8 +23,11 @@ jobs:
       with:
         python-version: '3.10'
 
+    # Устанавливаем и FFmpeg, и Tesseract OCR (для будущих фич)
     - name: Install System Dependencies (FFmpeg & Tesseract)
-      run: sudo apt-get update && sudo apt-get install -y ffmpeg tesseract-ocr
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg tesseract-ocr tesseract-ocr-rus
 
     - name: Install Python dependencies
       run: pip install -r requirements.txt
@@ -31,13 +37,16 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Добавили секрет для Gemini
+        # GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} # Закомментировано, пока не используем
       run: python run.py
     
     - name: Commit and push if changed
       run: |
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions-bot@github.com"
+        # --- ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ: Сначала синхронизируемся ---
+        git pull
+        # -----------------------------------------------------------
         if [ -f "videos.json" ]; then
           git add videos.json
           git diff --staged --quiet || git commit -m "Update videos.json"
